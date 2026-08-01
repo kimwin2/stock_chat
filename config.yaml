@@ -27,11 +27,14 @@ crawl:
   image_pack_days: 7
 
 models:
-  vision: "gemini-2.5-flash"
-  classify: "gemini-2.5-flash-lite"
-  summarize: "gemini-2.5-flash"
+  # 2026-08 기준 이 API 키로 실제 호출해 확인한 모델들.
+  # gemini-2.5-flash 는 신규 사용자에게 404 로 막혀 있어 쓸 수 없다.
+  # 수급 순위표 50행을 숫자까지 정확히 읽는 건 3.6-flash 뿐이라 vision 은 여기 고정.
+  vision: "gemini-3.6-flash"
+  classify: "gemini-3.5-flash-lite"   # 단순 라벨링. 4장 배치에 2.5초로 가장 빠름
+  summarize: "gemini-3.6-flash"
   embed: "gemini-embedding-001"
-  answer: "gemini-2.5-flash"       # 브라우저에서 Q&A 답변 생성에 사용
+  answer: "gemini-3.5-flash"       # 브라우저에서 Q&A 답변 생성에 사용
   embed_dim: 256                   # 번들 크기를 위해 축소 (int8 양자화까지 적용)
   classify_batch: 60
 

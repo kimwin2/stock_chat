@@ -21,8 +21,12 @@ import requests
 BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 # 무료 등급 기준 분당 요청 수. 여유를 두고 보수적으로 잡았다.
+# 여기 없는 모델은 10 RPM 으로 취급한다.
 DEFAULT_RPM = {
-    "gemini-2.5-flash": 8,
+    "gemini-3.6-flash": 8,
+    "gemini-3.5-flash": 8,
+    "gemini-3.5-flash-lite": 12,
+    "gemini-3.1-flash-lite": 12,
     "gemini-2.5-flash-lite": 12,
     "gemini-embedding-001": 90,
 }
