@@ -14,13 +14,16 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta
 
 from .config import MEDIA_DIR, ensure_dirs, load_config, require
 from .crawl import all_days, load_day, save_day
 from .llm import QuotaExceeded, generate_json
 from .views import GLOSSARY
 
-MAX_IMAGES_PER_CALL = 8
+MAX_IMAGES_PER_CALL = 6      # 6장이면 밀도 높은 표도 출력 토큰 한도 안에 들어온다
+BATCH_WINDOW_MINUTES = 12    # 이 간격 안에 올라온 사진은 같은 주제로 본다
+SAVE_EVERY_CALLS = 5         # 중단되더라도 여기까지는 남는다
 
 SYSTEM = f"""\
 당신은 한국 주식 텔레그램 채널의 이미지 판독기다.
@@ -75,41 +78,66 @@ def _pending(messages: list[dict]) -> list[dict]:
 
 
 def _group(messages: list[dict]) -> list[list[dict]]:
-    """앨범(grouped_id) 단위로 묶는다. 단일 이미지는 자기 혼자 한 묶음."""
-    groups: dict[object, list[dict]] = {}
+    """호출 단위로 묶는다.
+
+    이 채널은 사진의 3분의 1이 앨범 없이 낱장으로 올라오고, 앨범도 2~3장으로 잘다.
+    낱장마다 호출하면 501장에 291회가 나온다 — 무료 쿼터로는 감당이 안 된다.
+
+    그래서 앨범을 원자 단위로 두되, 시간이 가까운 것끼리 한 호출로 합친다.
+    같은 시간대에 올라온 사진은 어차피 같은 주제라(예: 19:09~19:16 수급 분석)
+    맥락이 이어져 판독 품질도 오히려 올라간다.
+    """
+    # 1) 앨범을 원자 단위로 만든다
+    albums: dict[object, list[dict]] = {}
     for m in messages:
         key = m.get("group_id") or f"solo-{m['id']}"
-        groups.setdefault(key, []).append(m)
+        albums.setdefault(key, []).append(m)
 
+    units = [sorted(v, key=lambda m: m["id"]) for v in albums.values()]
+    units.sort(key=lambda u: u[0]["date"])
+
+    # 2) 시간이 가까운 단위끼리 합친다
     out: list[list[dict]] = []
-    for key in sorted(groups, key=lambda k: min(m["id"] for m in groups[k])):
-        members = sorted(groups[key], key=lambda m: m["id"])
-        for i in range(0, len(members), MAX_IMAGES_PER_CALL):
-            out.append(members[i : i + MAX_IMAGES_PER_CALL])
+    buf: list[dict] = []
+    for unit in units:
+        # 앨범 하나가 이미 한도를 넘으면 쪼갠다
+        if len(unit) > MAX_IMAGES_PER_CALL:
+            if buf:
+                out.append(buf)
+                buf = []
+            for i in range(0, len(unit), MAX_IMAGES_PER_CALL):
+                out.append(unit[i : i + MAX_IMAGES_PER_CALL])
+            continue
+
+        if buf:
+            gap = datetime.fromisoformat(unit[0]["date"]) - datetime.fromisoformat(buf[-1]["date"])
+            if len(buf) + len(unit) > MAX_IMAGES_PER_CALL or gap > timedelta(minutes=BATCH_WINDOW_MINUTES):
+                out.append(buf)
+                buf = []
+        buf.extend(unit)
+
+    if buf:
+        out.append(buf)
     return out
 
 
 def _caption_for(group: list[dict], day_messages: list[dict]) -> str:
-    """앨범에 붙은 캡션. 앨범 멤버 중 텍스트가 있는 것, 없으면 앞뒤 메시지에서 찾는다."""
-    texts = [m["text"] for m in group if m.get("text")]
-    if texts:
-        return "\n".join(texts)
+    """이 묶음의 맥락이 될 텍스트.
 
-    gid = group[0].get("group_id")
-    if gid:
-        for m in day_messages:
-            if m.get("group_id") == gid and m.get("text"):
-                return m["text"]
-
-    # 앨범 캡션이 없으면 바로 다음/이전 메시지 텍스트를 맥락으로
-    ids = {m["id"] for m in group}
-    lo, hi = min(ids), max(ids)
-    near = [
-        m["text"]
-        for m in day_messages
-        if m.get("text") and (lo - 2 <= m["id"] <= hi + 2) and m["id"] not in ids
-    ]
-    return "\n".join(near[:2]) or "(캡션 없음)"
+    캡션 없는 사진이 많으므로, 묶음이 걸친 시간대의 메시지 텍스트를 모아서 준다.
+    "1) 사모 시총대비 : 반도체, 신재생..." 같은 앞선 메시지가 바로 뒤 사진이
+    무슨 표인지 알려주는 결정적 단서다.
+    """
+    lo, hi = min(m["id"] for m in group), max(m["id"] for m in group)
+    lines: list[str] = []
+    for m in day_messages:
+        text = (m.get("text") or "").strip()
+        if not text:
+            continue
+        # 묶음 범위 + 바로 앞뒤 3건까지
+        if lo - 3 <= m["id"] <= hi + 3:
+            lines.append(f"{m['date'][11:16]} {text[:300]}")
+    return "\n".join(lines[:8]) or "(캡션 없음)"
 
 
 def _render(item: dict) -> str:
@@ -158,7 +186,8 @@ def run(days: int | None = None, limit: int | None = None, model: str | None = N
 
             try:
                 result = generate_json(
-                    model, prompt, system=SYSTEM, images=paths, temperature=0.1
+                    model, prompt, system=SYSTEM, images=paths,
+                    temperature=0.1, max_output_tokens=16384,
                 )
             except QuotaExceeded as e:
                 print(f"  [쿼터] {e}")
@@ -187,6 +216,13 @@ def run(days: int | None = None, limit: int | None = None, model: str | None = N
             # 응답이 짧게 오면 남은 것은 다음 실행에서 재시도
             if len(result) < len(group):
                 stats["failed"] += len(group) - len(result)
+
+            # 하루가 끝날 때만 저장하면 중단 시 그날 작업을 통째로 날린다.
+            # 호출당 십수 초씩 걸리므로 자주 저장해 두는 편이 싸다.
+            if dirty and stats["calls"] % SAVE_EVERY_CALLS == 0:
+                save_day(day, messages)
+                dirty = False
+                print(f"    ... {stats['calls']}회 / 이미지 {stats['images']}장 저장")
 
         if dirty:
             save_day(day, messages)
