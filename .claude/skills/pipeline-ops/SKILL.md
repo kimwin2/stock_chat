@@ -60,12 +60,49 @@ python -m pipeline.bundle
 
 ### Gemini 일일 쿼터 소진
 
-로그에 `Gemini 일일 무료 쿼터를 다 썼습니다` 가 뜨면 **정상 동작이다.**
+로그에 `Gemini 일일 무료 쿼터를 다 썼습니다 (model=..., 한도=N회/일)` 가 뜨면 **정상 동작이다.**
 파이프라인은 거기까지 저장하고 종료하며, 다음 실행이 남은 분량부터 이어서 한다.
 
+**모델을 바꾸기 전에 반드시 실제 호출로 일일 한도를 확인할 것.** 문서에 적힌 값과 다르고,
+모델 목록 API 에 나오는 모델이 실제로는 404 인 경우도 있다.
+
+```bash
+python - <<'EOF'
+import os, requests
+from pipeline.config import _load_env; _load_env()
+key = os.environ["GEMINI_API_KEY"]
+def probe(model, n=3):
+    for i in range(n):
+        r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            params={"key": key},
+            json={"contents":[{"role":"user","parts":[{"text":"ok"}]}],
+                  "generationConfig":{"maxOutputTokens":16}}, timeout=60)
+        if r.status_code == 200: continue
+        if r.status_code == 429:
+            for d in r.json().get("error",{}).get("details",[]):
+                for v in d.get("violations",[]) or []:
+                    return f"{i}회 후 429 · {v.get('quotaId')} = {v.get('quotaValue')}"
+        return f"{r.status_code}: {r.text[:100]}"
+    return f"{n}/{n} 성공"
+for m in ("gemini-3.5-flash","gemini-3.5-flash-lite","gemini-3.6-flash"):
+    print(f"{m:26s} {probe(m)}")
+EOF
+```
+
+2026-08 실측: `gemini-2.5-flash` = 404(신규 사용자 차단), `gemini-3.6-flash` = **20회/일**,
+`gemini-3.5-flash` 와 `-flash-lite` 는 여유 있음.
+
 - 급하면: `python -m pipeline.run --skip vision` — 이미지 없이 텍스트만으로 요약
-- 초기 4주 백필은 며칠에 나눠 채워지는 게 정상이다
 - 모델별 분당 한도는 `pipeline/llm.py` 의 `DEFAULT_RPM` 에서 조정
+
+### 이미지 판독이 안 돈다
+
+기본값이 꺼짐이다 (`config.yaml` 의 `vision.enabled: false`). 무료 쿼터로는
+사진 500장 판독에 필요한 139회를 감당할 수 없어서 내린 결정이다.
+
+- 켜기: `vision.enabled: true` 또는 일회성으로 `python -m pipeline.vision --force`
+- 켜면 이미 받아둔 사진부터 이어서 판독한다. 다시 크롤할 필요 없다
+- 쿼터를 아끼려면 `--limit 20` 처럼 호출 수를 묶어서 며칠에 걸쳐 채운다
 
 ### 텔레그램 세션 만료
 
