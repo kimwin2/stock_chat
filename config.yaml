@@ -41,11 +41,13 @@ models:
   #   gemini-3.5-flash  → 쿼터 여유 있음. 요약·답변에 사용
   #   *-flash-lite      → 쿼터 가장 넉넉. 분류에 사용
   #   gemini-2.0-flash  → 분당 한도에 바로 걸림. 사용 안 함
-  vision: "gemini-3.5-flash"          # vision.enabled 를 켤 때만 쓰임
+  # 쿼터가 가장 넉넉한 flash-lite 로 통일. 매일 도는 파이프라인이라
+  # 품질보다 "매일 빠짐없이 도는 것"이 우선이다.
+  vision: "gemini-3.5-flash-lite"     # vision.enabled 를 켤 때만 쓰임
   classify: "gemini-3.5-flash-lite"
-  summarize: "gemini-3.5-flash"
+  summarize: "gemini-3.5-flash-lite"
   embed: "gemini-embedding-001"
-  answer: "gemini-3.5-flash"          # 브라우저에서 Q&A 답변 생성에 사용
+  answer: "gemini-3.5-flash-lite"     # 브라우저에서 Q&A 답변 생성에 사용
   embed_dim: 256                   # 번들 크기를 위해 축소 (int8 양자화까지 적용)
   classify_batch: 60
 
