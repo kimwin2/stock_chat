@@ -28,6 +28,8 @@ DEFAULT_RPM = {
     "gemini-3.5-flash-lite": 15,
     "gemini-3.1-flash-lite": 15,
     "gemini-2.5-flash-lite": 15,
+    # 임베딩만 단위가 다르다 — "분당 텍스트 수". 배치 1회가 HTTP 로는 한 번이지만
+    # 쿼터는 배치 안의 텍스트 수만큼 깎이므로 embed_batch 가 weight 로 배치 크기를 넘긴다.
     "gemini-embedding-001": 90,
 }
 
@@ -37,15 +39,20 @@ class QuotaExceeded(RuntimeError):
 
 
 class _RateLimiter:
-    """모델별 최소 호출 간격 유지. 스레드 안전."""
+    """모델별 최소 호출 간격 유지. 스레드 안전.
+
+    weight 는 이 호출이 쿼터를 몇 건으로 계산되는지다. 임베딩 배치 요청은
+    HTTP 로는 1회지만 쿼터는 배치 안의 텍스트 수만큼 깎이므로, 배치 크기를
+    weight 로 넘겨야 실제 한도에 맞는 간격이 나온다.
+    """
 
     def __init__(self) -> None:
         self._last: dict[str, float] = {}
         self._lock = threading.Lock()
 
-    def wait(self, model: str) -> None:
+    def wait(self, model: str, weight: int = 1) -> None:
         rpm = DEFAULT_RPM.get(model, 10)
-        interval = 60.0 / max(1, rpm)
+        interval = 60.0 / max(1, rpm) * max(1, weight)
         with self._lock:
             last = self._last.get(model, 0.0)
             delay = interval - (time.monotonic() - last)
@@ -84,10 +91,17 @@ def _quota_violation(response: requests.Response) -> tuple[bool, str | None]:
     return False, None
 
 
-def _post(url: str, payload: dict, model: str, timeout: int = 180, max_retries: int = 5) -> dict:
+def _post(
+    url: str,
+    payload: dict,
+    model: str,
+    timeout: int = 180,
+    max_retries: int = 5,
+    weight: int = 1,
+) -> dict:
     last_err: Exception | None = None
     for attempt in range(max_retries):
-        _limiter.wait(model)
+        _limiter.wait(model, weight)
         try:
             r = requests.post(
                 url,
@@ -221,7 +235,7 @@ def embed_batch(
     *,
     dim: int = 256,
     task_type: str = "RETRIEVAL_DOCUMENT",
-    batch_size: int = 50,
+    batch_size: int = 20,
 ) -> list[list[float]]:
     """텍스트 목록 → 정규화된 임베딩 목록."""
     out: list[list[float]] = []
@@ -238,7 +252,9 @@ def embed_batch(
                 for t in chunk
             ]
         }
-        data = _post(f"{BASE}/models/{model}:batchEmbedContents", payload, model)
+        data = _post(
+            f"{BASE}/models/{model}:batchEmbedContents", payload, model, weight=len(chunk)
+        )
         for item in data.get("embeddings", []):
             out.append(_normalize(item.get("values", [])))
     return out

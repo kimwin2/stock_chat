@@ -172,7 +172,7 @@ def run(force: bool = False, model: str | None = None) -> dict:
 
     quota_hit = False
     if todo_idx:
-        step = 50
+        step = 20
         for s in range(0, len(todo_idx), step):
             part = todo_idx[s : s + step]
             texts = [_embed_text(chunks[i]) for i in part]

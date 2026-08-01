@@ -66,9 +66,13 @@ function start() {
     .map((w) => `<option value="${w}"${w === core.settings.default_weeks ? ' selected' : ''}>최근 ${w}주</option>`)
     .join('');
 
-  if (!core.secrets?.gh_token || !core.secrets?.gh_repo) {
+  // 토큰이 없어도 GitHub Actions 페이지로 보내주면 거기서 한 번 더 눌러 실행할 수 있다.
+  // 버튼을 죽여두는 것보다 낫다.
+  if (!core.secrets?.gh_token && core.secrets?.gh_repo) {
+    $('refresh').title = '토큰이 없어 GitHub Actions 페이지로 이동합니다. 거기서 Run workflow 를 누르세요.';
+  } else if (!core.secrets?.gh_repo) {
     $('refresh').disabled = true;
-    $('refresh').title = 'GH_DISPATCH_TOKEN 이 설정되지 않아 수동 실행이 꺼져 있습니다 (자정 자동 실행은 동작).';
+    $('refresh').title = 'GH_REPO 가 설정되지 않았습니다 (자정 자동 실행은 동작).';
   }
 
   renderDaystrip();
@@ -365,7 +369,14 @@ async function send() {
 async function refresh() {
   const weeks = Number($('weeks').value);
   const { gh_repo: repo, gh_token: token } = core.secrets || {};
-  if (!repo || !token) return;
+  if (!repo) return;
+
+  if (!token) {
+    // 토큰이 없으면 직접 실행은 못 하지만, 실행 페이지까지는 데려다줄 수 있다.
+    window.open(`https://github.com/${repo}/actions/workflows/daily.yml`, '_blank', 'noopener');
+    toast('GitHub 에서 “Run workflow” 를 누르면 실행됩니다. 기간은 거기서 고르세요.', false, 8000);
+    return;
+  }
 
   const btn = $('refresh');
   const label = btn.innerHTML;
