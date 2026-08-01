@@ -1,0 +1,46 @@
+# 대상 채널 요약 — 설정
+# 비밀값은 여기 넣지 말 것. .env 로.
+
+telegram:
+  # 운영자가 6개월마다 채널을 새로 엶. 새 채널이 생기면 맨 아래에 추가만 하면 됨.
+  # 과거 채널은 지우지 말 것 — 이미 수집한 데이터의 출처 표기에 쓰임.
+  channels:
+    - id: ch_2026h1
+      label: "주식 채널 (26년 상반기)"
+      link: "CLOSED"          # 2026-06-26 종료. 신규 수집 대상 아님.
+      active: false
+    - id: ch_2026h2
+      # 실제 채널 제목 기준. 12월 말에 다음 채널이 열리면 항목을 새로 추가할 것.
+      label: "주식 채널 (26년 12월 말까지)"
+      link: "https://t.me/+mMwXCGr0onc2MmZl"
+      active: true
+
+crawl:
+  default_weeks: 1            # UI 기본값
+  allowed_weeks: [1, 2, 3, 4] # UI 선택지
+  max_messages: 4000          # 안전 상한 (4주 × 약 200/일 = 5600 이지만 실제론 훨씬 적음)
+  download_media: true
+  media_max_width: 800        # webp 리사이즈 폭
+  media_retention_days: 28    # 이보다 오래된 원본 이미지는 삭제 (텍스트 추출본은 영구 보관)
+  # 요약이 근거로 인용한 이미지를 최근 N일치만 웹 번들에 실어 보낸다 (썸네일 480px).
+  # 0 으로 두면 이미지를 아예 배포하지 않는다 — 레포 용량이 걱정되면 0.
+  image_pack_days: 7
+
+models:
+  vision: "gemini-2.5-flash"
+  classify: "gemini-2.5-flash-lite"
+  summarize: "gemini-2.5-flash"
+  embed: "gemini-embedding-001"
+  answer: "gemini-2.5-flash"       # 브라우저에서 Q&A 답변 생성에 사용
+  embed_dim: 256                   # 번들 크기를 위해 축소 (int8 양자화까지 적용)
+  classify_batch: 60
+
+rag:
+  index_days: 120             # RAG 인덱스에 포함할 최근 일수
+  chunk_max_chars: 900
+  top_k: 24                   # 검색 후 LLM 에 넘길 청크 수
+
+summary:
+  # 요약을 만들 때 하루를 두 개의 시장으로 나누는 기준 (KST)
+  # 국장: 06:00~20:00 / 미장: 20:00~06:00 (익일) — 다만 실제 분류는 LLM 이 내용 기준으로 판단
+  archive_days: 400           # 요약 보관 일수

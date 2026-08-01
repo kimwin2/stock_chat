@@ -1,0 +1,101 @@
+name: 크롤링 + 요약 + 배포
+
+on:
+  schedule:
+    # 매일 00:10 KST (= 15:10 UTC 전날)
+    - cron: '10 15 * * *'
+  workflow_dispatch:
+    inputs:
+      weeks:
+        description: '크롤링 기간 (주)'
+        required: false
+        default: '1'
+        type: choice
+        options: ['1', '2', '3', '4']
+      force_summary:
+        description: '기존 요약도 다시 생성'
+        required: false
+        default: false
+        type: boolean
+
+# 동시에 두 번 돌면 데이터가 꼬인다
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # 수집 원문·이미지·임베딩을 실행 간에 유지한다.
+      # 캐시가 날아가도 파이프라인은 그냥 다시 수집할 뿐 깨지지 않는다.
+      - name: 데이터 캐시 복원
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: pipeline-data-${{ github.run_id }}
+          restore-keys: |
+            pipeline-data-
+
+      - name: 파이프라인 실행
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_STRING_SESSION: ${{ secrets.TG_STRING_SESSION }}
+          SHARE_PASSPHRASE: ${{ secrets.SHARE_PASSPHRASE }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python -m pipeline.run \
+            --weeks "${{ inputs.weeks || '1' }}" \
+            ${{ inputs.force_summary && '--force-summary' || '' }}
+
+      - name: 실행 요약
+        if: always()
+        run: |
+          echo '### 파이프라인 결과' >> $GITHUB_STEP_SUMMARY
+          if [ -f data/state.json ]; then
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat data/state.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo '상태 파일이 없습니다 — 초기 단계에서 실패했을 수 있습니다.' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 데이터 캐시 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: pipeline-data-${{ github.run_id }}
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

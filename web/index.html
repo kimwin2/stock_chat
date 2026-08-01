@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>채널 요약</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+</head>
+<body>
+
+<!-- 잠금 화면 -->
+<div class="lock" id="lock">
+  <div class="lock-card">
+    <h1>채널 요약</h1>
+    <p>공유 암호를 입력하세요. 데이터는 암호로 암호화돼 있어 암호 없이는 읽을 수 없습니다.</p>
+    <input type="password" id="pass" placeholder="공유 암호" autocomplete="current-password" autofocus>
+    <button class="primary" id="unlock-btn">열기</button>
+    <label><input type="checkbox" id="remember" checked> 이 기기에 기억하기</label>
+    <div class="error" id="lock-err"></div>
+  </div>
+</div>
+
+<!-- 본 화면 -->
+<div class="app" id="app">
+  <header>
+    <div class="brand">채널 요약<span id="updated"></span></div>
+    <div class="spacer"></div>
+    <select id="weeks" title="크롤링할 기간"></select>
+    <button class="primary" id="refresh"><span class="long">크롤링 + 요약</span><span class="short">갱신</span></button>
+    <button class="icon-btn" id="theme" title="라이트/다크 전환">◐</button>
+    <button class="icon-btn" id="logout" title="잠그기">⏻</button>
+  </header>
+
+  <div class="layout">
+    <!-- 왼쪽: 요약 -->
+    <section class="pane active" id="pane-summary">
+      <div class="daystrip" id="daystrip"></div>
+      <div id="summary"></div>
+    </section>
+
+    <!-- 오른쪽: Q&A -->
+    <section class="pane" id="pane-chat">
+      <div class="card chat-card">
+        <h2>질의응답</h2>
+        <div class="suggest" id="suggest"></div>
+        <div class="chat-log" id="chat-log"></div>
+        <div class="chat-input">
+          <textarea id="q" rows="1" placeholder="예: 최근에 현금비중을 왜 늘렸어?"></textarea>
+          <button class="primary" id="send">전송</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <nav class="mobile-tabs">
+    <button id="tab-summary" aria-selected="true">요약</button>
+    <button id="tab-chat" aria-selected="false">질문</button>
+  </nav>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
