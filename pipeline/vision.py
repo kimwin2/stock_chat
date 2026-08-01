@@ -150,11 +150,21 @@ def _render(item: dict) -> str:
     return f"[{head}] {content}" if head else content
 
 
-def run(days: int | None = None, limit: int | None = None, model: str | None = None) -> dict:
+def run(
+    days: int | None = None,
+    limit: int | None = None,
+    model: str | None = None,
+    force: bool = False,
+) -> dict:
     cfg = load_config()
+    if not force and not cfg.get("vision.enabled", False):
+        print("[건너뜀] config.yaml 의 vision.enabled 가 false 입니다.")
+        print("         켜려면 true 로 바꾸거나 `python -m pipeline.vision --force` 로 실행하세요.")
+        return {"calls": 0, "images": 0, "skipped": True}
+
     ensure_dirs()
     require("GEMINI_API_KEY")
-    model = model or cfg.get("models.vision", "gemini-2.5-flash")
+    model = model or cfg.get("models.vision", "gemini-3.6-flash")
 
     day_list = all_days()
     if days:
@@ -239,8 +249,9 @@ def main() -> None:
     p.add_argument("--days", type=int, default=None, help="최근 N일치만 처리")
     p.add_argument("--limit", type=int, default=None, help="API 호출 횟수 상한")
     p.add_argument("--model", default=None)
+    p.add_argument("--force", action="store_true", help="vision.enabled 가 false 여도 실행")
     args = p.parse_args()
-    run(days=args.days, limit=args.limit, model=args.model)
+    run(days=args.days, limit=args.limit, model=args.model, force=args.force)
 
 
 if __name__ == "__main__":

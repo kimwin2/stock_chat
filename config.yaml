@@ -15,6 +15,14 @@ telegram:
       link: "https://t.me/+mMwXCGr0onc2MmZl"
       active: true
 
+vision:
+  # 사진을 Gemini 비전으로 판독해 요약·검색에 넣을지.
+  # 현재 끔 — 무료 등급 쿼터로는 사진 500장 판독이 현실적이지 않다.
+  # (한 번 켜면 이미 받아둔 사진부터 이어서 판독하므로 아무 때나 true 로 바꾸면 된다)
+  # 끈 상태에서도 사진은 계속 내려받고, 요약이 인용한 사진은 화면에 썸네일로 보인다.
+  # 다만 캡션 없는 사진의 내용은 요약·질의응답에 반영되지 않는다.
+  enabled: false
+
 crawl:
   default_weeks: 1            # UI 기본값
   allowed_weeks: [1, 2, 3, 4] # UI 선택지
@@ -27,14 +35,17 @@ crawl:
   image_pack_days: 7
 
 models:
-  # 2026-08 기준 이 API 키로 실제 호출해 확인한 모델들.
-  # gemini-2.5-flash 는 신규 사용자에게 404 로 막혀 있어 쓸 수 없다.
-  # 수급 순위표 50행을 숫자까지 정확히 읽는 건 3.6-flash 뿐이라 vision 은 여기 고정.
-  vision: "gemini-3.6-flash"
-  classify: "gemini-3.5-flash-lite"   # 단순 라벨링. 4장 배치에 2.5초로 가장 빠름
-  summarize: "gemini-3.6-flash"
+  # 2026-08 기준 이 API 키로 실제 호출해 무료 등급 쿼터까지 확인한 값들.
+  #   gemini-2.5-flash  → 신규 사용자에게 404. 사용 불가
+  #   gemini-3.6-flash  → 하루 20회. 판독 정확도는 가장 좋지만 파이프라인엔 못 씀
+  #   gemini-3.5-flash  → 쿼터 여유 있음. 요약·답변에 사용
+  #   *-flash-lite      → 쿼터 가장 넉넉. 분류에 사용
+  #   gemini-2.0-flash  → 분당 한도에 바로 걸림. 사용 안 함
+  vision: "gemini-3.5-flash"          # vision.enabled 를 켤 때만 쓰임
+  classify: "gemini-3.5-flash-lite"
+  summarize: "gemini-3.5-flash"
   embed: "gemini-embedding-001"
-  answer: "gemini-3.5-flash"       # 브라우저에서 Q&A 답변 생성에 사용
+  answer: "gemini-3.5-flash"          # 브라우저에서 Q&A 답변 생성에 사용
   embed_dim: 256                   # 번들 크기를 위해 축소 (int8 양자화까지 적용)
   classify_batch: 60
 

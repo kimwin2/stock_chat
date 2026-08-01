@@ -20,14 +20,14 @@ import requests
 
 BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-# 무료 등급 기준 분당 요청 수. 여유를 두고 보수적으로 잡았다.
-# 여기 없는 모델은 10 RPM 으로 취급한다.
+# 무료 등급 기준 분당 요청 수. 여기 없는 모델은 10 RPM 으로 취급한다.
+# 참고 — 실측한 일일 한도: gemini-3.6-flash 는 20회/일뿐이라 파이프라인에 부적합.
 DEFAULT_RPM = {
-    "gemini-3.6-flash": 8,
-    "gemini-3.5-flash": 8,
-    "gemini-3.5-flash-lite": 12,
-    "gemini-3.1-flash-lite": 12,
-    "gemini-2.5-flash-lite": 12,
+    "gemini-3.6-flash": 4,
+    "gemini-3.5-flash": 10,
+    "gemini-3.5-flash-lite": 15,
+    "gemini-3.1-flash-lite": 15,
+    "gemini-2.5-flash-lite": 15,
     "gemini-embedding-001": 90,
 }
 
@@ -67,6 +67,23 @@ def api_key() -> str:
     return key
 
 
+def _quota_violation(response: requests.Response) -> tuple[bool, str | None]:
+    """429 응답에서 일일 한도 위반인지와 그 한도값을 뽑는다.
+
+    반환: (일일한도_위반인가, 한도값)
+    """
+    try:
+        details = response.json().get("error", {}).get("details", []) or []
+    except ValueError:
+        return False, None
+    for detail in details:
+        for violation in detail.get("violations", []) or []:
+            quota_id = violation.get("quotaId", "")
+            if "PerDay" in quota_id:
+                return True, violation.get("quotaValue")
+    return False, None
+
+
 def _post(url: str, payload: dict, model: str, timeout: int = 180, max_retries: int = 5) -> dict:
     last_err: Exception | None = None
     for attempt in range(max_retries):
@@ -89,11 +106,15 @@ def _post(url: str, payload: dict, model: str, timeout: int = 180, max_retries: 
 
         body = r.text[:500]
         if r.status_code == 429:
-            # 일일 한도인지 분당 한도인지 구분
-            if "PerDay" in body or "per day" in body.lower():
+            # 일일 한도와 분당 한도는 대응이 다르다. 일일 한도면 기다려도 소용없으므로
+            # 즉시 멈추고 다음 실행에 넘긴다.
+            # 본문을 잘라서 문자열로 검사하면 quotaId 가 500자 뒤에 있을 때 놓친다.
+            per_day, quota_value = _quota_violation(r)
+            if per_day:
                 raise QuotaExceeded(
-                    f"Gemini 일일 무료 쿼터를 다 썼습니다 (model={model}).\n"
-                    f"내일 이어서 실행하면 남은 분량만 처리합니다.\n{body}"
+                    f"Gemini 일일 무료 쿼터를 다 썼습니다 "
+                    f"(model={model}, 한도={quota_value}회/일).\n"
+                    f"다음 실행이 남은 분량부터 이어서 처리합니다."
                 )
             wait = min(2 ** attempt * 5 + random.random() * 3, 90)
             print(f"    [rate limit] {wait:.0f}초 대기 후 재시도 ({attempt + 1}/{max_retries})")
