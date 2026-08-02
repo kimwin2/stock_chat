@@ -68,8 +68,16 @@ function start() {
   $('app').classList.add('ready');
 
   days = (core.days || []).slice().sort((a, b) => a.date.localeCompare(b.date));
-  const updated = core.updated_at ? core.updated_at.slice(0, 16).replace('T', ' ') : '';
-  $('updated').textContent = updated ? `업데이트 ${updated}` : '';
+
+  // 마지막 갱신 시각. 오늘이면 시각만, 지난 날이면 날짜까지.
+  if (core.updated_at) {
+    const d = core.updated_at.slice(0, 10);
+    const hm = core.updated_at.slice(11, 16);
+    $('updated').textContent =
+      d === todayKST() ? `${hm} 갱신` : `${d.slice(5).replace('-', '.')} ${hm} 갱신`;
+  } else {
+    $('updated').textContent = '';
+  }
 
   // 토큰이 없어도 GitHub Actions 페이지로 보내주면 거기서 한 번 더 눌러 실행할 수 있다.
   // 버튼을 죽여두는 것보다 낫다.
