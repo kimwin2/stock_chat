@@ -142,10 +142,6 @@ header {
 .brand { font-weight: 700; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; }
 .brand span { color: var(--text-muted); font-weight: 400; font-size: 12px; margin-left: 7px; }
 .spacer { flex: 1; min-width: 0; }
-header select {
-  padding: 6px 9px; border-radius: 8px;
-  border: 1px solid var(--border-strong); background: var(--surface-1);
-}
 .icon-btn { padding: 6px 9px; }
 #refresh .short { display: none; }
 @media (max-width: 600px) {

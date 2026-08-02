@@ -71,11 +71,6 @@ function start() {
   const updated = core.updated_at ? core.updated_at.slice(0, 16).replace('T', ' ') : '';
   $('updated').textContent = updated ? `업데이트 ${updated}` : '';
 
-  const weeks = $('weeks');
-  weeks.innerHTML = (core.settings.allowed_weeks || [1, 2, 3, 4])
-    .map((w) => `<option value="${w}"${w === core.settings.default_weeks ? ' selected' : ''}>최근 ${w}주</option>`)
-    .join('');
-
   // 토큰이 없어도 GitHub Actions 페이지로 보내주면 거기서 한 번 더 눌러 실행할 수 있다.
   // 버튼을 죽여두는 것보다 낫다.
   if (!core.secrets?.gh_token && core.secrets?.gh_repo) {
@@ -94,7 +89,7 @@ function start() {
 function renderDaystrip() {
   const strip = $('daystrip');
   if (!days.length) {
-    strip.innerHTML = '<span class="muted">요약이 아직 없습니다. 상단 “크롤링 + 요약”을 눌러보세요.</span>';
+    strip.innerHTML = '<span class="muted">요약이 아직 없습니다. 상단 “지금 갱신”을 눌러보세요.</span>';
     return;
   }
   const today = todayKST();
@@ -464,16 +459,17 @@ async function send() {
   }
 }
 
-// ── 크롤링 + 요약 실행 ───────────────────────────────────
+// ── 지금 갱신 ───────────────────────────────────────────
+// 매시 크론을 기다리지 않고, 누른 시점까지의 오늘 대화를 바로 크롤링 + 요약한다.
+// hourly.yml(당일 증분, --today)을 디스패치한다. 기간 재처리는 자정 daily.yml 몫.
 async function refresh() {
-  const weeks = Number($('weeks').value);
   const { gh_repo: repo, gh_token: token } = core.secrets || {};
   if (!repo) return;
 
   if (!token) {
     // 토큰이 없으면 직접 실행은 못 하지만, 실행 페이지까지는 데려다줄 수 있다.
-    window.open(`https://github.com/${repo}/actions/workflows/daily.yml`, '_blank', 'noopener');
-    toast('GitHub 에서 “Run workflow” 를 누르면 실행됩니다. 기간은 거기서 고르세요.', false, 8000);
+    window.open(`https://github.com/${repo}/actions/workflows/hourly.yml`, '_blank', 'noopener');
+    toast('GitHub 에서 “Run workflow” 를 누르면 지금 시점 대화로 갱신됩니다.', false, 8000);
     return;
   }
 
@@ -482,17 +478,17 @@ async function refresh() {
   btn.disabled = true;
   btn.textContent = '요청 중...';
   try {
-    const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/daily.yml/dispatches`, {
+    const res = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/hourly.yml/dispatches`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
-      body: JSON.stringify({ ref: 'main', inputs: { weeks: String(weeks) } }),
+      body: JSON.stringify({ ref: 'main' }),
     });
     if (res.status === 204) {
-      toast(`최근 ${weeks}주 크롤링 + 요약을 시작했습니다. 5~15분 뒤 새로고침하세요.`, false, 9000);
+      toast('지금까지 올라온 오늘 대화를 크롤링 + 요약하기 시작했습니다. 3~5분 뒤 새로고침하세요.', false, 9000);
     } else {
       toast(`실행 요청 실패 (${res.status}): ${(await res.text()).slice(0, 160)}`, true, 9000);
     }

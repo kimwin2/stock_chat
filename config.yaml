@@ -24,8 +24,8 @@ vision:
   enabled: false
 
 crawl:
-  default_weeks: 1            # UI 기본값
-  allowed_weeks: [1, 2, 3, 4] # UI 선택지
+  default_weeks: 1            # CLI·자정 daily.yml 기본값 (UI 갱신 버튼은 항상 당일 증분)
+  allowed_weeks: [1, 2, 3, 4] # CLI·workflow_dispatch 허용 범위
   max_messages: 4000          # 안전 상한 (4주 × 약 200/일 = 5600 이지만 실제론 훨씬 적음)
   download_media: true
   media_max_width: 800        # webp 리사이즈 폭
