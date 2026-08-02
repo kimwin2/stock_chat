@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 from collections import Counter
 from datetime import datetime, timedelta
@@ -115,6 +116,16 @@ def _embed_text(chunk: dict) -> str:
     return f"{head}\n{chunk['text']}"
 
 
+def _cache_key(chunk: dict) -> str:
+    """재실행 시 이미 계산한 임베딩을 재사용하기 위한 키.
+
+    파이썬 내장 hash() 는 프로세스마다 값이 달라져서(PYTHONHASHSEED) 캐시가
+    절대 맞지 않는다. 실행할 때마다 전부 다시 임베딩하게 되므로 안정 해시를 쓴다.
+    """
+    digest = hashlib.sha1(chunk["text"].encode("utf-8")).hexdigest()[:16]
+    return f"{chunk['id']}|{digest}"
+
+
 def quantize(vectors: np.ndarray) -> tuple[str, int, int]:
     """정규화된 float 벡터 → int8. 번들 용량을 4분의 1로 줄인다."""
     q = np.clip(np.round(vectors * 127.0), -127, 127).astype(np.int8)
@@ -146,7 +157,7 @@ def run(force: bool = False, model: str | None = None) -> dict:
     cache: dict[str, np.ndarray] = {}
     if old_vectors is not None and len(old_chunks) == len(old_vectors) and not force:
         for chunk, vec in zip(old_chunks, old_vectors):
-            cache[chunk["id"] + "|" + str(hash(chunk["text"]))] = vec
+            cache[_cache_key(chunk)] = vec
 
     chunks: list[dict] = []
     for day in day_list:
@@ -160,8 +171,7 @@ def run(force: bool = False, model: str | None = None) -> dict:
     todo_idx: list[int] = []
     reused = 0
     for i, chunk in enumerate(chunks):
-        key = chunk["id"] + "|" + str(hash(chunk["text"]))
-        hit = cache.get(key)
+        hit = cache.get(_cache_key(chunk))
         if hit is not None and len(hit) == dim:
             vectors[i] = hit
             reused += 1

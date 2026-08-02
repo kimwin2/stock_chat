@@ -44,21 +44,42 @@ class _RateLimiter:
     weight 는 이 호출이 쿼터를 몇 건으로 계산되는지다. 임베딩 배치 요청은
     HTTP 로는 1회지만 쿼터는 배치 안의 텍스트 수만큼 깎이므로, 배치 크기를
     weight 로 넘겨야 실제 한도에 맞는 간격이 나온다.
+
+    문서에 적힌 한도와 실제가 다르고 모델마다 제각각이라, 429 를 맞으면
+    스스로 느려지고(throttled) 성공이 이어지면 서서히 원래 속도로 돌아온다(succeeded).
     """
+
+    MAX_PENALTY = 8.0
 
     def __init__(self) -> None:
         self._last: dict[str, float] = {}
+        self._penalty: dict[str, float] = {}
         self._lock = threading.Lock()
 
     def wait(self, model: str, weight: int = 1) -> None:
         rpm = DEFAULT_RPM.get(model, 10)
-        interval = 60.0 / max(1, rpm) * max(1, weight)
         with self._lock:
+            penalty = self._penalty.get(model, 1.0)
+            interval = 60.0 / max(1, rpm) * max(1, weight) * penalty
             last = self._last.get(model, 0.0)
             delay = interval - (time.monotonic() - last)
             if delay > 0:
                 time.sleep(delay)
             self._last[model] = time.monotonic()
+
+    def throttled(self, model: str) -> float:
+        """429 를 맞았다. 이 모델의 호출 간격을 늘린다."""
+        with self._lock:
+            penalty = min(self._penalty.get(model, 1.0) * 1.6, self.MAX_PENALTY)
+            self._penalty[model] = penalty
+            return penalty
+
+    def succeeded(self, model: str) -> None:
+        """성공하면 아주 조금씩 원래 속도로 되돌린다."""
+        with self._lock:
+            penalty = self._penalty.get(model, 1.0)
+            if penalty > 1.0:
+                self._penalty[model] = max(1.0, penalty * 0.97)
 
 
 _limiter = _RateLimiter()
@@ -116,6 +137,7 @@ def _post(
             continue
 
         if r.status_code == 200:
+            _limiter.succeeded(model)
             return r.json()
 
         body = r.text[:500]
@@ -130,8 +152,12 @@ def _post(
                     f"(model={model}, 한도={quota_value}회/일).\n"
                     f"다음 실행이 남은 분량부터 이어서 처리합니다."
                 )
+            penalty = _limiter.throttled(model)
             wait = min(2 ** attempt * 5 + random.random() * 3, 90)
-            print(f"    [rate limit] {wait:.0f}초 대기 후 재시도 ({attempt + 1}/{max_retries})")
+            print(
+                f"    [rate limit] {wait:.0f}초 대기 후 재시도 "
+                f"({attempt + 1}/{max_retries}, 이후 간격 x{penalty:.1f})"
+            )
             time.sleep(wait)
             last_err = RuntimeError(body)
             continue
