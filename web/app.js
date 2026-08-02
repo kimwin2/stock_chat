@@ -172,6 +172,8 @@ function cashBlock(side, label) {
       }</span>
     </div>
     <div class="cash-bar"><i style="width:${hasVal ? Math.min(100, Math.max(0, end)) : 0}%"></i></div>
+    ${c.basis === '주식환산'
+      ? '<div class="cash-note conv">원문은 주식 비중으로 언급 — 100에서 뺀 값</div>' : ''}
     ${c.note ? `<div class="cash-note">${esc(c.note)}</div>` : ''}
     ${sparkline(recent, label)}
   </div>`;

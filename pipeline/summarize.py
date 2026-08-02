@@ -58,8 +58,12 @@ PROMPT_TMPL = """\
   "stance": "공격" | "중립" | "방어",
   "stance_reason": "그렇게 판단한 근거 한 문장",
   "cash": {{
-    "kr": {{"start": 숫자 또는 null, "end": 숫자 또는 null, "note": "변화 이유 한 문장"}},
-    "us": {{"start": 숫자 또는 null, "end": 숫자 또는 null, "note": "..."}}
+    "kr": {{
+      "start": 숫자 또는 null, "end": 숫자 또는 null,
+      "basis": "현금" 또는 "주식환산",
+      "note": "변화 이유 한 문장"
+    }},
+    "us": {{ ... 같은 형태 ... }}
   }},
   "changes": ["어제 대비 달라진 것 (전날 요약이 있을 때만). 최대 3개"],
   "markets": {{
@@ -82,8 +86,14 @@ markets.kr 에 채울 관점: {kr_views}
 markets.us 에 채울 관점: {us_views}
 markets.common 에 채울 관점: {common_views}
 
-cash.start 는 그날 처음 언급된 현금비중, cash.end 는 마지막으로 언급된 현금비중이다.
+cash.start 는 그날 처음 언급된 **현금** 비중, cash.end 는 마지막으로 언급된 **현금** 비중이다.
 언급이 없으면 null. 추측하지 마라.
+
+**cash 는 반드시 현금 기준이다.** 그는 국장을 "현금 10%"처럼 현금 기준으로,
+미장을 "포지션 95%까지 올렸습니다", "주식 95~100 필요"처럼 주식 기준으로 말하는 일이 잦다.
+"포지션 / 주식 비중 / 포트 유지"에 붙은 숫자는 주식 비중이므로 **100 에서 빼서** 넣어라.
+예: "미장 포지션 95%" → cash.us = {{"start": 5, "end": 5, "basis": "주식환산"}}
+그대로 현금이라고 말한 숫자면 basis 는 "현금".
 
 === {date} 메시지 ({count}건) ===
 {body}
@@ -194,9 +204,12 @@ def _clean(result: dict, day: str, messages: list[dict]) -> dict:
                 return round(float(v)) if v is not None else None
             except (TypeError, ValueError):
                 return None
+        basis = (side.get("basis") or "").strip()
         return {
             "start": num(side.get("start")),
             "end": num(side.get("end")),
+            # 주식 비중을 현금으로 환산했는지. 화면에서 숫자를 의심할 때 근거가 된다.
+            "basis": basis if basis in ("현금", "주식환산") else "",
             "note": (side.get("note") or "").strip(),
         }
 
