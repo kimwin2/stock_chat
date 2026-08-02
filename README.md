@@ -32,7 +32,7 @@ cp .env.example .env
 | `TG_API_ID` / `TG_API_HASH` | [my.telegram.org](https://my.telegram.org) |
 | `TG_STRING_SESSION` | `python -m pipeline.tg_auth` 로 발급 (기존 stock_test 세션 재사용 가능) |
 | `SHARE_PASSPHRASE` | 친구들에게 알려줄 암호. 직접 정한다 |
-| `GH_DISPATCH_TOKEN` | (선택) UI의 "크롤링 + 요약" 버튼용. 아래 1-5 |
+| `GH_DISPATCH_TOKEN` | (선택) UI의 "지금 갱신" 버튼용. 아래 1-5 |
 
 ### 1-3. 채널 링크 넣기
 
@@ -56,7 +56,7 @@ telegram:
 
 ### 1-5. (선택) UI 버튼 활성화
 
-UI의 "크롤링 + 요약" 버튼은 GitHub Actions 를 원격 실행한다. 필요한 토큰:
+UI의 "지금 갱신" 버튼은 GitHub Actions 를 원격 실행한다. 필요한 토큰:
 
 - [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens) → Fine-grained token
 - Repository access: `kimwin2/stock_chat` **하나만**
@@ -82,7 +82,9 @@ UI의 "크롤링 + 요약" 버튼은 GitHub Actions 를 원격 실행한다. 필
 GitHub cron 은 정확한 시계가 아니다 — 부하에 따라 5~20분 밀리고 가끔 건너뛴다.
 "매시 정각"이 아니라 "대략 한 시간마다"로 보면 된다.
 
-즉시 갱신하고 싶으면 웹 화면 상단에서 기간(1~4주)을 고르고 **"크롤링 + 요약"** 을 누른다.
+매시 크론을 기다리기 싫으면 웹 화면 상단의 **"지금 갱신"** 을 누른다 — 누른 시점까지의
+오늘 대화를 바로 크롤링해 요약을 다시 만든다 (`hourly.yml` 원격 실행, 약 1~2분).
+기간(1~4주) 재처리가 필요하면 GitHub Actions 에서 `daily.yml` 을 직접 실행한다.
 
 ### 로컬에서 직접 돌리기
 

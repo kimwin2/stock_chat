@@ -156,8 +156,6 @@ def run(passphrase: str | None = None) -> dict:
         "updated_at": now.isoformat(),
         "channel_labels": {c["id"]: c.get("label", c["id"]) for c in cfg.channels},
         "settings": {
-            "default_weeks": cfg.get("crawl.default_weeks", 1),
-            "allowed_weeks": cfg.get("crawl.allowed_weeks", [1, 2, 3, 4]),
             "answer_model": cfg.get("models.answer", "gemini-2.5-flash"),
             "embed_model": cfg.get("models.embed", "gemini-embedding-001"),
             "embed_dim": int(cfg.get("models.embed_dim", 256)),
