@@ -46,7 +46,10 @@ models:
   vision: "gemini-3.5-flash-lite"     # vision.enabled 를 켤 때만 쓰임
   classify: "gemini-3.5-flash-lite"
   summarize: "gemini-3.5-flash-lite"
-  embed: "gemini-embedding-001"
+  # embedding-001 은 무료 1,000회/일. 하루치를 처음 인덱싱하면 바로 소진된다.
+  # embedding-2 는 쿼터 버킷이 별도라 훨씬 여유롭다 (실측 확인).
+  # 모델을 바꾸면 벡터 공간이 달라지므로 인덱스가 자동으로 재계산된다.
+  embed: "gemini-embedding-2"
   answer: "gemini-3.5-flash-lite"     # 브라우저에서 Q&A 답변 생성에 사용
   embed_dim: 256                   # 번들 크기를 위해 축소 (int8 양자화까지 적용)
   classify_batch: 60

@@ -31,6 +31,7 @@ DEFAULT_RPM = {
     # 임베딩만 단위가 다르다 — "분당 텍스트 수". 배치 1회가 HTTP 로는 한 번이지만
     # 쿼터는 배치 안의 텍스트 수만큼 깎이므로 embed_batch 가 weight 로 배치 크기를 넘긴다.
     "gemini-embedding-001": 90,
+    "gemini-embedding-2": 90,
 }
 
 
