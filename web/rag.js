@@ -55,6 +55,18 @@ function datesIn(query, fallbackYear) {
   return out;
 }
 
+// "최근에 어떻게 하고 있어?" 류 질문은 시점을 명시하지 않지만 최신 글을 원한다.
+// 인덱스에는 지난 채널의 과거 글이 훨씬 많아서, 보정이 없으면 몇 달 전 답이 올라온다.
+const RECENCY_WORDS = /최근|요즘|지금|현재|오늘|어제|이번\s*주|당장|근래|앞으로|계획/;
+
+function recencyBoost(query, date, newestDate) {
+  const days = (Date.parse(newestDate) - Date.parse(date)) / 86400000;
+  if (!Number.isFinite(days) || days < 0) return 0;
+  // 30일 반감기. 시점을 묻는 말이 있으면 가중치를 3배로.
+  const decay = Math.exp(-days / 30);
+  return decay * (RECENCY_WORDS.test(query) ? 0.45 : 0.15);
+}
+
 function lexicalBoost(query, text) {
   // 종목명·지표명처럼 그대로 등장하는 고유어를 잡기 위한 가벼운 보정.
   const terms = query.match(/[가-힣A-Za-z]{2,}/g) || [];
@@ -70,7 +82,10 @@ export async function search(query, settings, key, topK) {
 
   const q = await embedQuery(query, settings, key);
   const { chunks, vecs, dim } = index;
-  const wantDates = datesIn(query, (chunks.at(-1)?.date || '2026-01-01').slice(0, 4));
+  const newest = chunks.reduce((a, c) => (c.date > a ? c.date : a), chunks[0]?.date || '');
+  const wantDates = datesIn(query, newest.slice(0, 4));
+  // 질문이 특정 날짜를 짚었다면 최신성 보정은 방해만 된다
+  const useRecency = wantDates.size === 0;
 
   const scored = new Array(chunks.length);
   for (let i = 0; i < chunks.length; i++) {
@@ -80,6 +95,7 @@ export async function search(query, settings, key, topK) {
     let score = dot / 127;
     score += lexicalBoost(query, chunks[i].text);
     if (wantDates.size && wantDates.has(chunks[i].date)) score += 0.35;
+    if (useRecency) score += recencyBoost(query, chunks[i].date, newest);
     scored[i] = { i, score };
   }
   scored.sort((a, b) => b.score - a.score);

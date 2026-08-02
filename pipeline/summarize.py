@@ -95,6 +95,11 @@ cash.start 는 그날 처음 언급된 **현금** 비중, cash.end 는 마지막
 예: "미장 포지션 95%" → cash.us = {{"start": 5, "end": 5, "basis": "주식환산"}}
 그대로 현금이라고 말한 숫자면 basis 는 "현금".
 
+**cash 에는 그가 자기 포트폴리오에 대해 직접 말한 숫자만 넣어라.**
+"전략: QQQ&TIP", "카나리아 자산 신호", "안전 자산 100% 투자" 처럼 자동 전략
+스크립트가 뱉은 권고는 그의 실제 포지션이 아니다. 그런 건 signals 관점으로 보내고
+cash 는 null 로 둬라. 그날 자기 포지션 언급이 없으면 그냥 null 이다.
+
 === {date} 메시지 ({count}건) ===
 {body}
 """
@@ -204,10 +209,13 @@ def _clean(result: dict, day: str, messages: list[dict]) -> dict:
                 return round(float(v)) if v is not None else None
             except (TypeError, ValueError):
                 return None
+        start, end = num(side.get("start")), num(side.get("end"))
         basis = (side.get("basis") or "").strip()
+        if start is None and end is None:
+            basis = ""  # 숫자가 없으면 환산 여부도 의미 없다
         return {
-            "start": num(side.get("start")),
-            "end": num(side.get("end")),
+            "start": start,
+            "end": end,
             # 주식 비중을 현금으로 환산했는지. 화면에서 숫자를 의심할 때 근거가 된다.
             "basis": basis if basis in ("현금", "주식환산") else "",
             "note": (side.get("note") or "").strip(),
