@@ -1,0 +1,104 @@
+name: 당일 증분 갱신
+
+# 글이 올라오는 시간대에만 1시간 간격으로 돈다.
+# KST 05~24시 = UTC 20~23시(전날) + UTC 00~14시  → 하루 20회.
+# 새벽 1~4시(KST)는 글이 거의 없어 건너뛴다.
+#
+# GitHub cron 은 정확한 시계가 아니다 — 부하에 따라 5~20분 밀리고 가끔 건너뛴다.
+# "매시 정각"이 아니라 "대략 1시간마다"로 보면 된다.
+on:
+  schedule:
+    - cron: '5 20-23,0-14 * * *'
+  workflow_dispatch:
+
+# 앞 실행이 아직 돌고 있으면 이번 건 건너뛴다.
+# 시간별 실행이 밀려서 쌓이는 것보다 한 번 거르는 편이 낫다.
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 데이터 캐시 복원
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: pipeline-data-${{ github.run_id }}
+          restore-keys: |
+            pipeline-data-
+
+      - name: 당일 증분 실행
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_STRING_SESSION: ${{ secrets.TG_STRING_SESSION }}
+          SHARE_PASSPHRASE: ${{ secrets.SHARE_PASSPHRASE }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: python -m pipeline.run --today
+
+      - name: 실행 요약
+        if: always()
+        run: |
+          echo '### 당일 증분 결과' >> $GITHUB_STEP_SUMMARY
+          if [ -f data/state.json ]; then
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat data/state.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 데이터 캐시 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: pipeline-data-${{ github.run_id }}
+
+      # GitHub 은 레포에 60일간 활동이 없으면 예약 워크플로를 조용히 끈다.
+      # 이 파이프라인은 아무것도 커밋하지 않아 그 조건에 걸린다.
+      # 월요일 첫 실행에만 heartbeat 를 갱신해 활동을 만들어 준다 (연 52회).
+      - name: cron 유지용 heartbeat
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date -u +%u)" != "1" ] || [ "$(date -u +%H)" != "00" ]; then
+            echo "월요일 00시(UTC) 실행이 아니므로 건너뜀"; exit 0
+          fi
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/heartbeat.txt
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/heartbeat.txt
+          git diff --staged --quiet || git commit -m "chore: cron 유지용 heartbeat"
+          git push
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

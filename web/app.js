@@ -11,6 +11,16 @@ let current = null;       // 현재 보고 있는 요약
 let market = 'kr';        // kr | us | common
 const history = [];       // 대화 기록
 
+let streamFilter = 'all'; // 당일 스트림 관점 필터
+let streamLimit = 40;     // 처음에 보여줄 개수
+
+// 오늘(KST) 날짜. 시간별 실행이 붙는 날은 이 날짜가 '진행 중'이다.
+function todayKST() {
+  const now = new Date();
+  return new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60000)
+    .toISOString().slice(0, 10);
+}
+
 // ── 공통 ───────────────────────────────────────────────
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -87,10 +97,12 @@ function renderDaystrip() {
     strip.innerHTML = '<span class="muted">요약이 아직 없습니다. 상단 “크롤링 + 요약”을 눌러보세요.</span>';
     return;
   }
+  const today = todayKST();
   strip.innerHTML = days.map((d) => {
     const s = stanceOf(d.stance);
     const [, mm, dd] = d.date.split('-');
-    return `<button class="day-chip" data-date="${d.date}" aria-current="false" title="${esc(d.headline)}">
+    return `<button class="day-chip${d.date === today ? ' today' : ''}" data-date="${d.date}"
+              aria-current="false" title="${esc(d.headline)}">
       <b>${mm}.${dd}</b><span class="wd">${esc(d.weekday || '')}</span>
       <span class="dot" style="background:var(--${s.cls || 'text-muted'})"></span>
     </button>`;
@@ -101,6 +113,8 @@ function renderDaystrip() {
 
 function select(date) {
   current = days.find((d) => d.date === date) || days.at(-1) || null;
+  streamFilter = 'all';
+  streamLimit = 40;
   document.querySelectorAll('.day-chip').forEach((el) =>
     el.setAttribute('aria-current', String(el.dataset.date === current?.date)));
   document.querySelector('.day-chip[aria-current="true"]')
@@ -195,23 +209,28 @@ function renderSummary() {
   };
   if (!counts[market]) market = ['kr', 'us', 'common'].find((m) => counts[m]) || 'kr';
 
+  // 오늘인데 아직 요약이 없으면 헤드라인 카드는 접고 실시간 스트림만 보여준다
+  const pending = current.pending === true;
+
   root.innerHTML = `
     <div class="card">
       <h2>${current.date} (${esc(current.weekday || '')}) · 메시지 ${current.message_count || 0}건${current.image_count ? ` · 이미지 ${current.image_count}장` : ''}</h2>
       <p class="headline">${esc(current.headline)}</p>
+      ${pending ? '' : `
       <div class="meta-row">
         ${current.stance ? `<span class="badge ${s.cls}"><span class="glyph">${s.glyph}</span>${esc(current.stance)}</span>` : ''}
         ${current.stance_reason ? `<span class="muted">${esc(current.stance_reason)}</span>` : ''}
       </div>
       <div class="cash-grid">${cashBlock('kr', '국장')}${cashBlock('us', '미장')}</div>
       ${current.changes?.length
-        ? `<ul class="changes">${current.changes.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+        ? `<ul class="changes">${current.changes.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}`}
     </div>
 
     ${current.quotes?.length ? `<div class="card"><h2>그날의 발언</h2>
       ${current.quotes.map((q) => `<blockquote class="quote"><span class="t">${esc(q.time || '')}</span>${esc(q.text)}</blockquote>`).join('')}
     </div>` : ''}
 
+    ${pending ? '' : `
     <div class="tabs" id="market-tabs">
       ${[['kr', '국장'], ['us', '미장'], ['common', '공통']].map(([k, l]) =>
         `<button data-m="${k}" aria-selected="${k === market}"${counts[k] ? '' : ' disabled'}>${l}<span class="n">${counts[k]}</span></button>`).join('')}
@@ -222,12 +241,13 @@ function renderSummary() {
       <h2>언급된 종목 · 섹터</h2>
       <div class="chips">${[...(current.sectors || []), ...(current.tickers || [])]
         .map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>
-    </div>` : ''}
+    </div>` : ''}`}
   `;
 
   root.querySelectorAll('#market-tabs button').forEach((b) =>
     b.addEventListener('click', () => { market = b.dataset.m; renderSummary(); }));
-  renderViews();
+  if (!pending) renderViews();
+  renderStream().catch((e) => console.warn('stream', e));
 }
 
 function renderViews() {
@@ -255,6 +275,83 @@ function renderViews() {
 
   box.querySelectorAll('details.refs').forEach((d) =>
     d.addEventListener('toggle', () => { if (d.open) fillRefs(d); }, { once: false }));
+}
+
+// ── 당일 라이브 스트림 ───────────────────────────────────
+// 오늘은 요약이 시간마다 다시 쓰이지만, 그것만으로는 "방금 뭐라고 했는지"를 알 수 없다.
+// 그래서 오늘 날짜에 한해 분류된 원문 스트림을 그대로 같이 보여준다.
+const KEY_VIEWS = new Set(['cash', 'trades', 'signals']);
+
+async function renderStream() {
+  const box = $('today-stream');
+  if (!current || current.date !== todayKST()) {
+    box.innerHTML = '';
+    return;
+  }
+
+  box.innerHTML = `<div class="card"><h2>오늘 실시간</h2>
+    <div class="muted">불러오는 중<span class="dots"></span></div></div>`;
+
+  const pack = await loadPart(`msgs-${current.date.slice(0, 7)}.enc`);
+  const all = (pack?.days?.[current.date] || []).filter((m) => m.view !== 'etc');
+  if (!all.length) {
+    box.innerHTML = `<div class="card"><h2>오늘 실시간</h2>
+      <div class="empty">아직 오늘 올라온 글이 없습니다.</div></div>`;
+    return;
+  }
+
+  const labelOf = Object.fromEntries((core.views || []).map((v) => [v.id, v.label]));
+  const counts = all.reduce((a, m) => ((a[m.view] = (a[m.view] || 0) + 1), a), {});
+  const shown = (streamFilter === 'all' ? all : all.filter((m) => m.view === streamFilter))
+    .slice().reverse();          // 최신이 위
+  const visible = shown.slice(0, streamLimit);
+  const updated = core.updated_at ? core.updated_at.slice(11, 16) : '';
+
+  box.innerHTML = `<div class="card">
+    <div class="stream-head">
+      <span class="live-dot"></span>
+      <h2 style="margin:0">오늘 실시간</h2>
+      <span class="stream-meta">${all.length}건 · 마지막 글 ${esc(all.at(-1).t)}${updated ? ` · ${updated} 갱신` : ''}</span>
+    </div>
+    <div class="stream-filter">
+      <button data-v="all" aria-pressed="${streamFilter === 'all'}">전체 <span class="n">${all.length}</span></button>
+      ${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([v, n]) =>
+        `<button data-v="${v}" aria-pressed="${streamFilter === v}">${esc(labelOf[v] || v)} ${n}</button>`).join('')}
+    </div>
+    <div class="stream">
+      ${visible.map((m) => {
+        const long = (m.text || '').length > 190;
+        return `<div class="stream-item${KEY_VIEWS.has(m.view) ? ' key' : ''}">
+        <span class="when">${esc(m.t)}</span><span class="pin"></span>
+        <span class="tag">${esc(labelOf[m.view] || m.view)}</span>
+        <span class="body${long ? ' clamp' : ''}">${esc(m.text) || '<span class="photo">(사진)</span>'}</span>
+        ${long ? '<span class="expand">더 보기</span>' : ''}
+        ${m.vision ? `<span class="vision">${esc(m.vision)}</span>` : ''}
+      </div>`;
+      }).join('')}
+    </div>
+    ${shown.length > visible.length
+      ? `<button class="stream-more">이전 ${shown.length - visible.length}건 더 보기</button>` : ''}
+  </div>`;
+
+  box.querySelectorAll('.stream-filter button').forEach((b) =>
+    b.addEventListener('click', () => {
+      streamFilter = b.dataset.v; streamLimit = 40; renderStream();
+    }));
+  box.querySelector('.stream-more')?.addEventListener('click', () => {
+    streamLimit += 60; renderStream();
+  });
+  box.querySelectorAll('.stream-item').forEach((item) => {
+    const body = item.querySelector('.body.clamp');
+    const more = item.querySelector('.expand');
+    if (!body || !more) return;
+    const toggle = () => {
+      const open = body.classList.toggle('clamp');
+      more.textContent = open ? '더 보기' : '접기';
+    };
+    body.addEventListener('click', toggle);
+    more.addEventListener('click', toggle);
+  });
 }
 
 // ── 원문 펼치기 ─────────────────────────────────────────

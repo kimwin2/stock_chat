@@ -193,7 +193,17 @@ def prune_media(retention_days: int) -> int:
     return removed
 
 
-async def crawl(weeks: int = 1, download_media: bool | None = None, cfg: Config | None = None) -> dict:
+async def crawl(
+    weeks: int = 1,
+    download_media: bool | None = None,
+    cfg: Config | None = None,
+    days: int | None = None,
+) -> dict:
+    """days 를 주면 weeks 대신 최근 N일만 가져온다 (시간별 증분 실행용).
+
+    1주치를 매시간 훑으면 매번 800건 가까이 되짚게 된다. 당일 갱신에는
+    2일이면 충분하고, 자정 전후에 걸친 메시지도 놓치지 않는다.
+    """
     cfg = cfg or load_config()
     ensure_dirs()
     require("TG_API_ID", "TG_API_HASH", "TG_STRING_SESSION")
@@ -210,9 +220,15 @@ async def crawl(weeks: int = 1, download_media: bool | None = None, cfg: Config 
     max_width = int(cfg.get("crawl.media_max_width", 800))
     max_messages = int(cfg.get("crawl.max_messages", 4000))
 
-    cutoff = datetime.now(KST) - timedelta(weeks=weeks)
+    cutoff = (
+        datetime.now(KST) - timedelta(days=days)
+        if days
+        else datetime.now(KST) - timedelta(weeks=weeks)
+    )
+    window = f"최근 {days}일" if days else f"최근 {weeks}주"
     stats: dict[str, Any] = {
         "weeks": weeks,
+        "days": days,
         "cutoff": cutoff.isoformat(),
         "channels": [],
         "added": 0,
@@ -232,7 +248,7 @@ async def crawl(weeks: int = 1, download_media: bool | None = None, cfg: Config 
         for ch in channels:
             entity = await resolve_channel(client, ch["link"])
             title = getattr(entity, "title", None) or ch["id"]
-            print(f"[채널] {title}  (기간: 최근 {weeks}주)")
+            print(f"[채널] {title}  (기간: {window})")
 
             by_day: dict[str, list[dict]] = defaultdict(list)
             photo_msgs: list[tuple[str, Any]] = []
@@ -292,16 +308,20 @@ async def crawl(weeks: int = 1, download_media: bool | None = None, cfg: Config 
 def main() -> None:
     p = argparse.ArgumentParser(description="대상 채널 크롤")
     p.add_argument("--weeks", type=int, default=None, help="최근 N주 (기본: config.yaml)")
+    p.add_argument("--days", type=int, default=None, help="최근 N일 (weeks 보다 우선)")
     p.add_argument("--no-media", action="store_true", help="이미지 다운로드 건너뛰기")
     args = p.parse_args()
 
     cfg = load_config()
     weeks = args.weeks or int(cfg.get("crawl.default_weeks", 1))
     allowed = cfg.get("crawl.allowed_weeks", [1, 2, 3, 4])
-    if weeks not in allowed:
+    if not args.days and weeks not in allowed:
         raise SystemExit(f"--weeks 는 {allowed} 중 하나여야 합니다 (받은 값: {weeks})")
 
-    asyncio.run(crawl(weeks=weeks, download_media=False if args.no_media else None, cfg=cfg))
+    asyncio.run(crawl(
+        weeks=weeks, days=args.days,
+        download_media=False if args.no_media else None, cfg=cfg,
+    ))
 
 
 if __name__ == "__main__":

@@ -69,16 +69,26 @@ UI의 "크롤링 + 요약" 버튼은 GitHub Actions 를 원격 실행한다. 필
 
 ## 2. 평소 운영
 
-**아무것도 안 해도 된다.** GitHub Actions 가 매일 **00:10 KST** 에 돌면서
-크롤 → 이미지 판독 → 분류 → 요약 → 임베딩 → 배포까지 마친다.
+**아무것도 안 해도 된다.** GitHub Actions 가 두 가지 주기로 돈다.
+
+| 워크플로 | 주기 | 하는 일 |
+|---|---|---|
+| `hourly.yml` | KST 05~24시 매시 (하루 20회) | 최근 2일 크롤 → **오늘 요약만 다시 생성** → 배포. 약 1~2분 |
+| `daily.yml` | 매일 00:10 KST | 최근 1주 전체 재처리. 약 1~7분 |
+
+시간별 실행 덕에 화면의 **오늘 날짜(LIVE 표시)** 는 한 시간 안팎으로 따라온다.
+오늘 탭에는 요약과 함께 **분류된 원문 스트림**이 시간 역순으로 붙는다.
+
+GitHub cron 은 정확한 시계가 아니다 — 부하에 따라 5~20분 밀리고 가끔 건너뛴다.
+"매시 정각"이 아니라 "대략 한 시간마다"로 보면 된다.
 
 즉시 갱신하고 싶으면 웹 화면 상단에서 기간(1~4주)을 고르고 **"크롤링 + 요약"** 을 누른다.
-5~15분 뒤 새로고침하면 반영된다.
 
 ### 로컬에서 직접 돌리기
 
 ```bash
 python -m pipeline.run                # 최근 1주 전체 파이프라인
+python -m pipeline.run --today        # 당일 증분 (시간별 실행과 동일)
 python -m pipeline.run --weeks 4      # 최근 4주
 python -m pipeline.run --only summarize --force-summary
 python -m pipeline.run --vision-limit 40   # 무료 쿼터 아끼기

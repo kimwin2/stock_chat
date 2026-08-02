@@ -20,7 +20,6 @@ import gzip
 import io
 import json
 import os
-import shutil
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -42,7 +41,7 @@ from .config import (
 )
 from .crawl import all_days, load_day
 from .index import load_index, quantize
-from .summarize import load_daily
+from .summarize import _weekday, load_daily
 from .views import GLOSSARY, VIEWS
 
 PBKDF2_ITERATIONS = 600_000
@@ -120,6 +119,37 @@ def run(passphrase: str | None = None) -> dict:
     days = [d for d in days if d >= cutoff]
 
     summaries = [s for s in (load_daily(d) for d in days) if s]
+
+    # 오늘 글은 올라왔는데 아직 요약이 없을 수 있다 (이른 아침엔 몇 건뿐이라
+    # summarize 가 건너뛴다). 그래도 화면에는 오늘 칩과 실시간 스트림이 떠야 하므로
+    # 빈 껍데기 항목을 만들어 준다. 요약이 생기면 자연히 대체된다.
+    today = now.strftime("%Y-%m-%d")
+    if not any(s["date"] == today for s in summaries):
+        todays = [
+            m for m in load_day(today)
+            if (m.get("text") or "").strip() or (m.get("vision") or "").strip()
+        ]
+        if todays:
+            summaries.append({
+                "date": today,
+                "weekday": _weekday(today),
+                "headline": "오늘은 아직 요약할 만큼 글이 쌓이지 않았습니다.",
+                "stance": "",
+                "stance_reason": "",
+                "cash": {
+                    "kr": {"start": None, "end": None, "basis": "", "note": ""},
+                    "us": {"start": None, "end": None, "basis": "", "note": ""},
+                },
+                "changes": [],
+                "markets": {},
+                "quotes": [],
+                "tickers": [],
+                "sectors": [],
+                "message_count": len(load_day(today)),
+                "image_count": sum(1 for m in load_day(today) if m.get("media") == "photo"),
+                "pending": True,
+            })
+            summaries.sort(key=lambda s: s["date"])
 
     core = {
         "version": 1,

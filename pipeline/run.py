@@ -35,6 +35,11 @@ def _save_state(state: dict) -> None:
 def main() -> int:
     p = argparse.ArgumentParser(description="전체 파이프라인")
     p.add_argument("--weeks", type=int, default=None, help="크롤 기간 (1~4)")
+    p.add_argument(
+        "--today",
+        action="store_true",
+        help="당일 증분 모드. 최근 2일만 크롤하고 오늘 요약만 다시 만든다 (시간별 실행용)",
+    )
     p.add_argument("--skip", nargs="*", default=[], choices=STEPS, help="건너뛸 단계")
     p.add_argument("--only", nargs="*", default=None, choices=STEPS, help="이 단계만 실행")
     p.add_argument("--vision-limit", type=int, default=None, help="비전 API 호출 상한")
@@ -53,6 +58,7 @@ def main() -> int:
     started = datetime.now(KST)
     state: dict = {
         "started_at": started.isoformat(),
+        "mode": "today" if args.today else "full",
         "weeks": weeks,
         "steps": {},
         "ok": True,
@@ -64,15 +70,23 @@ def main() -> int:
         print(f"\n{'=' * 60}\n  {step}\n{'=' * 60}")
         try:
             if step == "crawl":
-                result = asyncio.run(
-                    crawl(weeks=weeks, download_media=False if args.no_media else None, cfg=cfg)
-                )
+                result = asyncio.run(crawl(
+                    weeks=weeks,
+                    days=2 if args.today else None,
+                    download_media=False if args.no_media else None,
+                    cfg=cfg,
+                ))
             elif step == "vision":
-                result = vision.run(limit=args.vision_limit)
+                result = vision.run(days=2 if args.today else None, limit=args.vision_limit)
             elif step == "classify":
-                result = classify.run()
+                result = classify.run(days=2 if args.today else None)
             elif step == "summarize":
-                result = summarize.run(force=args.force_summary)
+                # 당일 모드에서는 오늘 요약만 다시 만든다. 하루가 진행되는 동안
+                # 현금비중과 스탠스가 계속 바뀌므로 매번 새로 써야 한다.
+                result = summarize.run(
+                    days=1 if args.today else None,
+                    force=args.today or args.force_summary,
+                )
             elif step == "index":
                 result = index.run()
             elif step == "bundle":

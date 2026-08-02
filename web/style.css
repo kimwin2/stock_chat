@@ -213,6 +213,74 @@ header select {
   background: color-mix(in srgb, var(--series-1) 10%, var(--surface-1));
 }
 .day-chip .dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 2px; }
+.day-chip.today b { color: var(--series-1); }
+.day-chip.today::after {
+  content: "LIVE";
+  font-size: 8px; font-weight: 700; letter-spacing: .06em;
+  color: var(--series-1); margin-top: 1px;
+}
+
+/* ── 당일 라이브 스트림 ────────────────────────────── */
+.stream-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.live-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--good); flex: 0 0 auto;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+.stream-meta { font-size: 12.5px; color: var(--text-muted); }
+
+.stream-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.stream-filter button {
+  font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  color: var(--text-secondary);
+}
+.stream-filter button[aria-pressed="true"] {
+  border-color: var(--series-1); color: var(--series-1);
+  background: color-mix(in srgb, var(--series-1) 10%, transparent);
+}
+
+.stream { position: relative; padding-left: 58px; }
+.stream::before {
+  content: ""; position: absolute; left: 47px; top: 4px; bottom: 4px;
+  width: 1px; background: var(--border);
+}
+.stream-item { position: relative; margin-bottom: 15px; }
+.stream-item .when {
+  position: absolute; left: -58px; top: 1px; width: 38px; text-align: right;
+  font-family: var(--mono); font-size: 11.5px; color: var(--text-muted);
+}
+.stream-item .pin {
+  position: absolute; left: -13px; top: 6px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--surface-1); border: 1.5px solid var(--border-strong);
+}
+.stream-item.key .pin { background: var(--series-1); border-color: var(--series-1); }
+.stream-item .tag {
+  display: inline-block; font-size: 10.5px; padding: 0 6px; border-radius: 4px;
+  background: var(--surface-2); color: var(--text-muted);
+  border: 1px solid var(--border); margin-right: 6px; vertical-align: 1px;
+}
+.stream-item .body { font-size: 13.5px; white-space: pre-wrap; word-break: break-word; }
+/* 스트림은 훑어보는 용도다. 증권사 리포트 전문 하나가 화면을 다 먹지 않게 접어둔다. */
+.stream-item .body.clamp {
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  overflow: hidden; cursor: pointer;
+}
+.stream-item .expand {
+  display: block; font-size: 11.5px; color: var(--series-1);
+  margin-top: 3px; cursor: pointer; user-select: none;
+}
+.stream-item .vision {
+  display: block; margin-top: 5px; padding: 6px 9px;
+  background: var(--surface-2); border-radius: 6px;
+  font-size: 12px; color: var(--text-muted);
+}
+.stream-item .photo { font-size: 12px; color: var(--text-muted); font-style: italic; }
+.stream-more { width: 100%; margin-top: 4px; }
 
 /* ── 카드 ─────────────────────────────────────────── */
 .card {
