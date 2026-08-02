@@ -140,16 +140,14 @@ header {
   border-bottom: 1px solid var(--border);
 }
 .brand { font-weight: 700; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; }
-.brand span { color: var(--text-muted); font-weight: 400; font-size: 12px; margin-left: 7px; }
 .spacer { flex: 1; min-width: 0; }
-.crawl-note { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.crawl-note, #updated { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .icon-btn { padding: 6px 9px; }
-#refresh .short { display: none; }
+#refresh .short, .crawl-note .short { display: none; }
 @media (max-width: 600px) {
   header { gap: 7px; padding: 9px 11px; }
-  .brand span { display: none; }
-  #refresh .long { display: none; }
-  #refresh .short { display: inline; }
+  #refresh .long, .crawl-note .long { display: none; }
+  #refresh .short, .crawl-note .short { display: inline; }
 }
 
 /* ── 레이아웃 ─────────────────────────────────────── */
