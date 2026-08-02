@@ -204,6 +204,15 @@ def run(force: bool = False, model: str | None = None) -> dict:
     chunks = [chunks[i] for i in keep]
     vectors = vectors[keep]
 
+    # 쿼터에 걸려 하나도 못 만들었는데 기존 인덱스가 있으면 그대로 둔다.
+    # 빈 인덱스로 덮어쓰면 멀쩡히 돌던 검색이 죽는다.
+    if not chunks and old_chunks:
+        print(
+            f"[유지] 이번에 임베딩한 청크가 없어 기존 인덱스 {len(old_chunks)}개를 그대로 둡니다.\n"
+            f"       다음 실행이 남은 분량부터 이어서 처리합니다."
+        )
+        return {"chunks": len(old_chunks), "embedded": 0, "quota_hit": quota_hit, "kept": True}
+
     with open(CHUNKS_PATH, "w", encoding="utf-8") as f:
         json.dump(chunks, f, ensure_ascii=False)
     np.save(VECTORS_PATH, vectors)
