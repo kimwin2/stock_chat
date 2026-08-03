@@ -9,7 +9,8 @@
 **스택**: Python 3.12 (빌드 도구 없음) + vanilla JS · Gemini REST 직접 호출 ·
 GitHub Actions + GitHub Pages · AES-256-GCM 클라이언트 복호화
 
-**실행 주기**: `hourly.yml` 이 KST 05~24시 매시 당일 증분(`--today`)을 돌리고,
+**실행 주기**: `hourly.yml` 이 KST 05~24시에 30분마다 당일 증분(`--today`)을 시도하고
+(GitHub cron 누락이 심해 2회/시간으로 보정, 실효 약 1회/시간),
 `daily.yml` 이 자정에 1주치를 통으로 재처리한다. 오늘 날짜는 화면에 LIVE 로 표시되고
 요약 아래에 분류된 원문 스트림이 붙는다.
 
