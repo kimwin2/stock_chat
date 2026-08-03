@@ -141,7 +141,9 @@ export async function ask(query, { settings, key, glossary, history = [], onToke
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+      // 한도가 작으면 모델이 내부 추론에 토큰을 다 쓰고 본문 없이 끝날 수 있다.
+      // 파이프라인(llm.py)과 같은 8192 로 맞춘다.
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
     }),
   });
 
@@ -155,6 +157,7 @@ export async function ask(query, { settings, key, glossary, history = [], onToke
   const decoder = new TextDecoder();
   let buffer = '';
   let answer = '';
+  let finishReason = '';
 
   while (true) {
     const { done, value } = await reader.read();
@@ -168,13 +171,22 @@ export async function ask(query, { settings, key, glossary, history = [], onToke
       if (!payload || payload === '[DONE]') continue;
       try {
         const chunk = JSON.parse(payload);
-        const text = chunk.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+        const cand = chunk.candidates?.[0];
+        if (cand?.finishReason) finishReason = cand.finishReason;
+        const text = cand?.content?.parts?.map((p) => p.text || '').join('') || '';
         if (text) {
           answer += text;
           onToken?.(text, answer);
         }
       } catch { /* 부분 청크는 무시 */ }
     }
+  }
+
+  // 빈 답을 조용히 보여주면 "답변이 안 나온다"로만 보인다. 이유를 드러낸다.
+  if (!answer.trim()) {
+    if (finishReason === 'MAX_TOKENS') throw new Error('모델이 답을 내기 전에 토큰 한도에 걸렸습니다. 다시 시도해 보세요.');
+    if (finishReason === 'SAFETY') throw new Error('안전 필터에 걸려 답변이 차단됐습니다. 질문을 바꿔보세요.');
+    throw new Error(`모델이 빈 응답을 반환했습니다${finishReason ? ` (${finishReason})` : ''}. 다시 시도해 보세요.`);
   }
 
   return { answer, hits };
