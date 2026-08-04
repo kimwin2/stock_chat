@@ -55,7 +55,9 @@ jobs:
           SHARE_PASSPHRASE: ${{ secrets.SHARE_PASSPHRASE }}
           GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: python -m pipeline.run --today
+        # --vision-limit 10: 사진이 몰린 시간대에도 판독은 회당 10콜(약 3~4분)까지만.
+        # 남은 사진은 다음 실행이 이어받으므로 갱신이 늘어지지 않는다.
+        run: python -m pipeline.run --today --vision-limit 10
 
       - name: 실행 요약
         if: always()
