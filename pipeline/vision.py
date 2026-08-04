@@ -177,6 +177,9 @@ def run(
         day_list = [d for d in day_list if d >= start]
 
     stats = {"calls": 0, "images": 0, "days": 0, "failed": 0, "quota_hit": False}
+    attempts = 0            # 실패 포함 시도한 묶음 수. limit 은 성공이 아니라 시도에 걸어야
+                            # 모델 장애(503 연발) 때 재시도 폭풍으로 실행이 늘어지지 않는다.
+    consecutive_fails = 0   # 연속 실패 — 모델 장애 감지용
 
     for day in day_list:
         messages = load_day(day)
@@ -191,7 +194,7 @@ def run(
         dirty = False
 
         for group in groups:
-            if limit is not None and stats["calls"] >= limit:
+            if limit is not None and attempts >= limit:
                 print(f"  [중단] 호출 한도 {limit}회 도달. 나머지는 다음 실행에서 이어집니다.")
                 if dirty:
                     save_day(day, messages)
@@ -200,6 +203,7 @@ def run(
             paths = [MEDIA_DIR / m["image"] for m in group]
             prompt = PROMPT_TMPL.format(n=len(group), caption=_caption_for(group, messages))
 
+            attempts += 1
             try:
                 result = generate_json(
                     model, prompt, system=SYSTEM, images=paths,
@@ -214,8 +218,17 @@ def run(
             except Exception as e:
                 print(f"  [!] 판독 실패 (#{group[0]['id']}~): {e}")
                 stats["failed"] += len(group)
+                consecutive_fails += 1
+                if consecutive_fails >= 3:
+                    # 3묶음 연속 실패면 개별 이미지 문제가 아니라 모델 장애(503 등)다.
+                    # 묶음마다 5회씩 재시도하며 시간을 태우지 말고 다음 실행에 맡긴다.
+                    print("  [중단] 3묶음 연속 실패 — 모델 장애로 보고 이번 실행은 여기서 멈춥니다.")
+                    if dirty:
+                        save_day(day, messages)
+                    return stats
                 continue
 
+            consecutive_fails = 0
             stats["calls"] += 1
             if isinstance(result, dict):
                 result = result.get("images") or result.get("results") or [result]
