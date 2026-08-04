@@ -170,6 +170,12 @@ def run(
     if days:
         day_list = day_list[-days:]
 
+    # start_date 이전 날짜는 판독하지 않는다 — 과거분 백필로 쿼터가 터지는 것을 막는다.
+    # 메시지를 건드리지 않고 날짜만 거르므로, 날짜를 당기면 언제든 백필할 수 있다.
+    start = cfg.get("vision.start_date")
+    if start:
+        day_list = [d for d in day_list if d >= start]
+
     stats = {"calls": 0, "images": 0, "days": 0, "failed": 0, "quota_hit": False}
 
     for day in day_list:
