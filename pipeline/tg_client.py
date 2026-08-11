@@ -23,6 +23,10 @@ from telethon.tl.types import ChatInviteAlready
 INVITE_RE = re.compile(r"(?:https?://)?t\.me/(?:joinchat/|\+)([A-Za-z0-9_-]+)")
 
 
+class ChannelLinkExpired(RuntimeError):
+    """invite 링크 만료/무효. 계정이 이미 가입돼 있으면 crawl 쪽에서 복구를 시도한다."""
+
+
 def create_client(session: str | None = None) -> TelegramClient:
     api_id = (os.getenv("TG_API_ID") or "").strip()
     api_hash = (os.getenv("TG_API_HASH") or "").strip()
@@ -55,7 +59,7 @@ async def resolve_channel(client: TelegramClient, link: str) -> Any:
     try:
         result = await client(CheckChatInviteRequest(value))
     except (InviteHashExpiredError, InviteHashInvalidError) as e:
-        raise RuntimeError(
+        raise ChannelLinkExpired(
             f"invite 링크가 만료됐거나 잘못됐습니다: {link}\n"
             f"운영자가 6개월마다 채널을 새로 열기 때문에 config.yaml 의 링크를 갱신해야 할 수 있습니다."
         ) from e

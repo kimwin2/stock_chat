@@ -118,7 +118,20 @@ def main() -> int:
     print(f"\n{'=' * 60}")
     print(f"  {'완료' if state['ok'] else '일부 실패'} · {state['elapsed_sec']}초")
     print(f"{'=' * 60}")
-    return 0 if state["ok"] else 1
+    if state["ok"]:
+        return 0
+
+    # 일부 단계가 실패해도 번들이 만들어졌으면 배포할 가치가 있다.
+    # exit 1 로 죽이면 Actions 의 deploy 잡이 스킵돼, 멀쩡히 만들어진 요약이
+    # 화면에 반영되지 않는다 (2026-08-11 실사고: invite 링크 만료로 crawl 만
+    # 실패했는데 반나절치 요약이 배포되지 못했다). 실패 자체는 state.json 과
+    # 워크플로 경고로 드러난다.
+    bundle_result = state["steps"].get("bundle") or {}
+    if "bundle" in state["steps"] and "error" not in bundle_result:
+        failed = [s for s, r in state["steps"].items() if "error" in (r or {})]
+        print(f"[!] 실패 단계 {failed} — 번들은 정상이므로 배포는 진행합니다 (exit 0)")
+        return 0
+    return 1
 
 
 if __name__ == "__main__":
