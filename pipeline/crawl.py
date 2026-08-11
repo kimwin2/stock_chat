@@ -28,8 +28,8 @@ from telethon.tl.types import (
     MessageMediaWebPage,
 )
 
-from .config import KST, MEDIA_DIR, RAW_DIR, Config, ensure_dirs, load_config, require
-from .tg_client import create_client, resolve_channel
+from .config import DATA_DIR, KST, MEDIA_DIR, RAW_DIR, Config, ensure_dirs, load_config, require
+from .tg_client import ChannelLinkExpired, create_client, resolve_channel
 
 # 후속 단계가 만들어낸 필드. 재크롤 시 덮어쓰지 않는다.
 DERIVED_FIELDS = ("vision", "view", "market", "vision_model")
@@ -79,6 +79,71 @@ def _serialize(message: Any, channel_id: str) -> dict:
         "tg_forwards": int(getattr(message, "forwards", 0) or 0),
         "image": None,
     }
+
+
+# ── invite 링크 만료 자가복구 ──────────────────────────────
+# 운영자의 invite 링크는 수시로 만료된다 (2026-08 에만 두 번). 계정은 이미
+# 채널에 가입돼 있으므로 링크가 죽어도 크롤은 가능해야 한다.
+# 성공할 때마다 텔레그램 채널 id 를 캐시하고, 링크가 죽으면
+# ① 캐시 id 로 가입 대화방에서 찾고 ② 캐시가 없으면 저장된 최신 메시지
+# (id+시각)를 지문 삼아 가입 채널들과 대조해 찾는다.
+TG_ID_CACHE = DATA_DIR / "tg_channels.json"
+
+
+def _load_tg_ids() -> dict:
+    try:
+        with open(TG_ID_CACHE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_tg_id(cfg_id: str, tg_id: int) -> None:
+    ids = _load_tg_ids()
+    if ids.get(cfg_id) == tg_id:
+        return
+    ids[cfg_id] = tg_id
+    TG_ID_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    with open(TG_ID_CACHE, "w", encoding="utf-8") as f:
+        json.dump(ids, f, ensure_ascii=False, indent=1)
+
+
+def _latest_probe(cfg_id: str) -> dict | None:
+    """이 채널에서 마지막으로 저장한 메시지 — 채널 식별 지문으로 쓴다."""
+    for day in reversed(all_days()):
+        for m in reversed(load_day(day)):
+            if m.get("channel") == cfg_id:
+                return m
+    return None
+
+
+async def _find_joined_channel(client: Any, ch: dict) -> Any:
+    """invite 링크 없이, 이미 가입된 대화방에서 채널 entity 를 찾는다."""
+    dialogs = []
+    async for d in client.iter_dialogs():
+        if getattr(d, "is_channel", False):
+            dialogs.append(d)
+
+    cached = _load_tg_ids().get(ch["id"])
+    if cached:
+        for d in dialogs:
+            if getattr(d.entity, "id", None) == cached:
+                return d.entity
+
+    probe = _latest_probe(ch["id"])
+    if not probe:
+        return None
+    for d in dialogs:
+        try:
+            m = await client.get_messages(d.entity, ids=probe["id"])
+        except Exception:
+            continue
+        posted = getattr(m, "date", None)
+        if posted is None:
+            continue
+        if posted.astimezone(KST).isoformat() == probe["date"]:
+            return d.entity
+    return None
 
 
 def _day_path(day: str) -> Path:
@@ -246,7 +311,16 @@ async def crawl(
             )
 
         for ch in channels:
-            entity = await resolve_channel(client, ch["link"])
+            try:
+                entity = await resolve_channel(client, ch["link"])
+            except ChannelLinkExpired:
+                entity = await _find_joined_channel(client, ch)
+                if entity is None:
+                    raise
+                print(f"  [복구] invite 링크가 만료됐지만 가입된 채널을 찾았습니다 — "
+                      f"config.yaml 의 {ch['id']} 링크를 갱신해 두는 것을 권장합니다.")
+            if getattr(entity, "id", None):
+                _save_tg_id(ch["id"], entity.id)
             title = getattr(entity, "title", None) or ch["id"]
             print(f"[채널] {title}  (기간: {window})")
 

@@ -74,6 +74,9 @@ jobs:
             echo '```json' >> $GITHUB_STEP_SUMMARY
             cat data/state.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
+            # 번들이 살아 배포는 되지만 일부 단계가 실패한 경우 — 초록으로 묻히지 않게 경고
+            python -c "import json,sys; sys.exit(0 if json.load(open('data/state.json'))['ok'] else 1)" \
+              || echo "::warning::파이프라인 일부 단계 실패 — 위 state.json 확인 (배포는 진행됨)"
           else
             echo '상태 파일이 없습니다 — 초기 단계에서 실패했을 수 있습니다.' >> $GITHUB_STEP_SUMMARY
           fi
