@@ -12,7 +12,7 @@ telegram:
     - id: ch_2026h2
       # 실제 채널 제목 기준. 12월 말에 다음 채널이 열리면 항목을 새로 추가할 것.
       label: "주식 채널 (26년 12월 말까지)"
-      link: "https://t.me/+arecVrMnwNBlMzM1"   # 2026-08 갱신 (이전 링크 만료)
+      link: "https://t.me/+MtTuLUtO8a8wYzhl"   # 2026-08-11 갱신 (이전 두 링크 만료)
       active: true
 
 vision:
